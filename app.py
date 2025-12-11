@@ -111,6 +111,7 @@ if uploaded_files and api_key:
                 json_string = extract_data_with_gemini(raw_text, api_key)
 
                 # Membersihkan format JSON dari AI (kadang AI nambahin ```json di awal)
+                
                 json_string = json_string.replace("```json", "").replace("```", "").strip()
 
                 import json
@@ -125,6 +126,20 @@ if uploaded_files and api_key:
             time.sleep(1) # Istirahat sebentar agar tidak kena limit
 
         status_text.text("Selesai!")
+
+        # Membersihkan format JSON dari AI agar lebih tangguh
+json_string = json_string.replace("```json", "").replace("```", "").strip()
+
+# Tambahan: Cari kurawal buka { pertama dan kurawal tutup } terakhir
+if json_string.startswith('{') and json_string.endswith('}'):
+    pass # Jika sudah rapi, lewati
+else:
+    # Jika ada teks di luar JSON (kata pengantar/penutup)
+    start_index = json_string.find('{')
+    end_index = json_string.rfind('}') # Mencari } dari belakang
+
+    if start_index != -1 and end_index != -1 and end_index > start_index:
+        json_string = json_string[start_index : end_index + 1]
 
         # Tampilkan Hasil
         if results:
