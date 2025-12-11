@@ -4,7 +4,8 @@ import pandas as pd
 import pdfplumber
 from io import BytesIO
 import time
-import json # Penting: Pastikan library json terimport
+import json 
+import re # Diperlukan untuk pembersihan teks/JSON yang lebih baik
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="AI Researcher Assistant", layout="wide")
@@ -25,8 +26,11 @@ with st.sidebar:
 # --- FUNGSI EKSTRAKSI ---
 def extract_data_with_gemini(text_content, api_key):
     # Konfigurasi Gemini
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+    except Exception as e:
+        return f"Error: API Key Configuration Failed - {e}"
 
     # Prompt (Perintah) untuk AI - Instruksi Ketat
     prompt = f"""
@@ -118,7 +122,8 @@ if uploaded_files and api_key:
             try:
                 json_string = extract_data_with_gemini(raw_text, api_key)
                 
-                # --- LOGIKA PEMBERSAHAN JSON AGAR LEBIH TANGGUH (Solusi untuk Error Expecting Value) ---
+                # --- LOGIKA PEMBERSAHAN JSON AGAR LEBIH TANGGUH ---
+                # Hapus segala hal yang bukan JSON (teks pengantar/penutup/markdown)
                 json_string = json_string.replace("```json", "").replace("```", "").strip()
                 
                 # Cari kurawal buka { pertama dan kurawal tutup } terakhir untuk mengisolasi JSON murni
@@ -127,7 +132,56 @@ if uploaded_files and api_key:
                 
                 if start_index != -1 and end_index != -1 and end_index > start_index:
                     json_string = json_string[start_index : end_index + 1]
-                
-                # Cek apakah ada pesan error dari API, bukan hanya JSON murni
+                else:
+                    # Jika tidak ada { dan } yang valid
+                    st.warning(f"File {file.name} gagal menghasilkan format JSON yang valid. Output AI mentah: {json_string[:100]}...")
+                    continue
+
+                # Cek apakah ada pesan error dari API yang muncul di output
                 if "Error: Failed API Call" in json_string:
-                    st.error(f"Gagal memproses {file.name}. Pesan API: {
+                    st.error(f"Gagal memproses {file.name}. Pesan API: {json_string}") 
+                    continue
+
+                # Coba load JSON
+                data_dict = json.loads(json_string)
+                data_dict["Filename"] = file.name # Tambah nama file
+                results.append(data_dict)
+                
+            except json.JSONDecodeError as e:
+                # Menangani kasus di mana pembersihan di atas masih gagal
+                st.error(f"Gagal memproses {file.name}. Error JSON: {e}. Output mentah AI mungkin kosong atau rusak.")
+                st.text(f"Output mentah yang gagal diproses: {json_string[:200]}...")
+            except Exception as e:
+                st.error(f"Gagal memproses {file.name}. Error tak terduga: {e}")
+            
+            progress_bar.progress((i + 1) / len(uploaded_files))
+            time.sleep(1) 
+
+        status_text.text("Selesai!")
+        
+        # Tampilkan Hasil
+        if results:
+            df = pd.DataFrame(results)
+            
+            # Atur urutan kolom agar rapi
+            cols = ["Filename", "Title", "Authors", "Year", "Institution", "Abstract_ID", "Abstract_EN", "Keywords", "Introduction", "Method", "Result", "Discussion", "Result_Discussion", "Conclusion"]
+            # Filter kolom yang ada saja (jaga-jaga error)
+            cols = [c for c in cols if c in df.columns]
+            df = df[cols]
+
+            st.dataframe(df)
+
+            # Download Button
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False)
+            
+            st.download_button(
+                label="📥 Download Excel Hasil Ekstraksi",
+                data=output.getvalue(),
+                file_name="hasil_ekstraksi_ai.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+elif uploaded_files and not api_key:
+    st.warning("⚠️ Mohon masukkan API Key di sidebar sebelah kiri dulu ya.")
