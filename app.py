@@ -31,6 +31,7 @@ def extract_data_with_gemini(text_content, api_key):
     # Prompt (Perintah) untuk AI - Ini kuncinya!
     prompt = f"""
     Kamu adalah asisten peneliti ahli teks korpus. Tugasmu adalah mengekstrak struktur IMRaD dari teks jurnal ilmiah berikut.
+    
 
     Instruksi Khusus:
     1. Teks jurnal ini bisa dalam Bahasa Indonesia atau Inggris. Pahami konteksnya.
@@ -50,6 +51,7 @@ def extract_data_with_gemini(text_content, api_key):
        - Conclusion (Kesimpulan/Penutup)
 
     3. Jika bagian tertentu tidak ada, isi dengan "TIDAK DITEMUKAN".
+
     4. Format output HARUS berupa JSON murni agar bisa saya convert ke Excel. Jangan ada markdown ```json```.
 
     Format JSON yang diinginkan:
@@ -69,6 +71,7 @@ def extract_data_with_gemini(text_content, api_key):
         "Conclusion": "..."
     }}
 
+    4. Pastikan output JSON murni, JANGAN ada kata pengantar, penutup, atau Markdown JSON (e.g., JANGAN gunakan ```json ... ```).
     Berikut adalah teks jurnalnya (dipotong 30.000 karakter pertama agar muat):
     {text_content[:30000]}
     """
