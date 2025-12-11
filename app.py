@@ -4,35 +4,34 @@ import pandas as pd
 import pdfplumber
 from io import BytesIO
 import time
+import json # Penting: Pastikan library json terimport
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="AI Researcher Assistant", layout="wide")
 
-st.title("🤖 AI Jurnal IMRaD Extractor")
+st.title("🤖 AI Jurnal IMRaD Extractor (Final Vibe Coder)")
 st.markdown("""
-Aplikasi ini menggunakan **Google Gemini Pro** untuk membaca jurnalmu.
-Dia paham konteks (ID/EN), jadi tidak masalah apakah itu "Method", "Material", atau "Metode Penelitian".
+Aplikasi ini menggunakan **Google Gemini 1.5 Flash** untuk membaca jurnalmu. 
+Model ini memahami konteks (ID/EN) dan struktur IMRaD, memberikan hasil yang lebih akurat daripada pencarian kata kunci biasa.
 """)
 
 # --- INPUT API KEY ---
-# Di sidebar agar rapi
 with st.sidebar:
     st.header("🔑 Kunci Akses")
     api_key = st.text_input("Masukkan Google Gemini API Key", type="password")
-    st.markdown("[Dapatkan API Key Gratis di sini](https://aistudio.google.com/app/apikey)")
-    st.info("Privasi: File PDF diproses di memori dan dikirim ke Google untuk dibaca, tidak disimpan permanen.")
+    st.markdown("[Dapatkan API Key Gratis di Google AI Studio](https://aistudio.google.com/app/apikey)")
+    st.info("Key hanya disimpan di memori browser Anda selama sesi ini.")
 
 # --- FUNGSI EKSTRAKSI ---
 def extract_data_with_gemini(text_content, api_key):
     # Konfigurasi Gemini
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash') # Menggunakan model flash agar cepat dan murah
+    model = genai.GenerativeModel('gemini-1.5-flash')
 
-    # Prompt (Perintah) untuk AI - Ini kuncinya!
+    # Prompt (Perintah) untuk AI - Instruksi Ketat
     prompt = f"""
     Kamu adalah asisten peneliti ahli teks korpus. Tugasmu adalah mengekstrak struktur IMRaD dari teks jurnal ilmiah berikut.
     
-
     Instruksi Khusus:
     1. Teks jurnal ini bisa dalam Bahasa Indonesia atau Inggris. Pahami konteksnya.
     2. Ekstrak bagian-bagian berikut secara TEPAT (copy-paste isi teksnya, jangan meringkas/summarize kecuali diminta):
@@ -49,15 +48,14 @@ def extract_data_with_gemini(text_content, api_key):
        - Discussion (Pembahasan/Diskusi - Jika terpisah)
        - Result_Discussion (Jika Hasil dan Pembahasan digabung dalam satu bab, taruh disini)
        - Conclusion (Kesimpulan/Penutup)
-
-    3. Jika bagian tertentu tidak ada, isi dengan "TIDAK DITEMUKAN".
-
-    4. 4. Format output HARUS berupa JSON murni agar bisa saya convert ke Excel. Jangan ada markdown ```json```.
     
-    ---
+    3. Jika bagian tertentu tidak ada, isi dengan "TIDAK DITEMUKAN".
+    
+    4. Format output HARUS berupa JSON murni agar bisa saya convert ke Excel. 
+    
     PENTING: JANGAN ada teks pengantar seperti "Berikut hasil ekstraksinya:" atau "Tentu, ini JSON-nya.".
-    Berikan HANYA dan SELURUHNYA string JSON, dimulai dari karakter { dan diakhiri dengan karakter }.
-    ---
+    Berikan HANYA dan SELURUHNYA string JSON, dimulai dari karakter {{ dan diakhiri dengan karakter }}.
+    JANGAN gunakan format Markdown JSON (e.g., JANGAN gunakan ```json ... ```).
 
     Format JSON yang diinginkan:
     {{
@@ -76,24 +74,27 @@ def extract_data_with_gemini(text_content, api_key):
         "Conclusion": "..."
     }}
 
-    4. Pastikan output JSON murni, JANGAN ada kata pengantar, penutup, atau Markdown JSON (e.g., JANGAN gunakan ```json ... ```).
     Berikut adalah teks jurnalnya (dipotong 30.000 karakter pertama agar muat):
-    {text_content[:30000]}
+    {text_content[:30000]} 
     """
 
     try:
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"Error: {e}"
+        return f"Error: Failed API Call - {e}"
 
 # --- FUNGSI BACA PDF ---
 def read_pdf(file):
     text = ""
-    with pdfplumber.open(file) as pdf:
-        for page in pdf.pages:
-            extract = page.extract_text()
-            if extract: text += extract + "\n"
+    try:
+        with pdfplumber.open(file) as pdf:
+            for page in pdf.pages:
+                extract = page.extract_text()
+                if extract: text += extract + "\n"
+    except Exception as e:
+        st.error(f"Gagal membaca PDF: Pastikan file tidak terproteksi atau korup. Error: {e}")
+        return None
     return text
 
 # --- MAIN APP ---
@@ -107,68 +108,26 @@ if uploaded_files and api_key:
 
         for i, file in enumerate(uploaded_files):
             status_text.text(f"Sedang membaca: {file.name}...")
-
+            
             # 1. Baca Teks Mentah
             raw_text = read_pdf(file)
+            if raw_text is None:
+                continue
 
             # 2. Kirim ke AI
             try:
                 json_string = extract_data_with_gemini(raw_text, api_key)
-
-                # Membersihkan format JSON dari AI (kadang AI nambahin ```json di awal)
                 
+                # --- LOGIKA PEMBERSAHAN JSON AGAR LEBIH TANGGUH (Solusi untuk Error Expecting Value) ---
                 json_string = json_string.replace("```json", "").replace("```", "").strip()
-
-                import json
-                data_dict = json.loads(json_string)
-                data_dict["Filename"] = file.name # Tambah nama file
-                results.append(data_dict)
-
-            except Exception as e:
-                st.error(f"Gagal memproses {file.name}. Error: {e}")
-
-            progress_bar.progress((i + 1) / len(uploaded_files))
-            time.sleep(1) # Istirahat sebentar agar tidak kena limit
-
-        status_text.text("Selesai!")
-
-        # Membersihkan format JSON dari AI agar lebih tangguh
-json_string = json_string.replace("```json", "").replace("```", "").strip()
-
-# Tambahan: Cari kurawal buka { pertama dan kurawal tutup } terakhir
-if json_string.startswith('{') and json_string.endswith('}'):
-    pass # Jika sudah rapi, lewati
-else:
-    # Jika ada teks di luar JSON (kata pengantar/penutup)
-    start_index = json_string.find('{')
-    end_index = json_string.rfind('}') # Mencari } dari belakang
-
-    if start_index != -1 and end_index != -1 and end_index > start_index:
-        json_string = json_string[start_index : end_index + 1]
-
-        # Tampilkan Hasil
-        if results:
-            df = pd.DataFrame(results)
-
-            # Atur urutan kolom agar rapi
-            cols = ["Filename", "Title", "Authors", "Year", "Institution", "Abstract_ID", "Abstract_EN", "Keywords", "Introduction", "Method", "Result", "Discussion", "Result_Discussion", "Conclusion"]
-            # Filter kolom yang ada saja (jaga-jaga error)
-            cols = [c for c in cols if c in df.columns]
-            df = df[cols]
-
-            st.dataframe(df)
-
-            # Download Button
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False)
-
-            st.download_button(
-                label="📥 Download Excel Hasil Ekstraksi",
-                data=output.getvalue(),
-                file_name="hasil_ekstraksi_ai.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-
-elif uploaded_files and not api_key:
-    st.warning("⚠️ Mohon masukkan API Key di sidebar sebelah kiri dulu ya.")
+                
+                # Cari kurawal buka { pertama dan kurawal tutup } terakhir untuk mengisolasi JSON murni
+                start_index = json_string.find('{')
+                end_index = json_string.rfind('}')
+                
+                if start_index != -1 and end_index != -1 and end_index > start_index:
+                    json_string = json_string[start_index : end_index + 1]
+                
+                # Cek apakah ada pesan error dari API, bukan hanya JSON murni
+                if "Error: Failed API Call" in json_string:
+                    st.error(f"Gagal memproses {file.name}. Pesan API: {
