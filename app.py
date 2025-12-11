@@ -52,7 +52,12 @@ def extract_data_with_gemini(text_content, api_key):
 
     3. Jika bagian tertentu tidak ada, isi dengan "TIDAK DITEMUKAN".
 
-    4. Format output HARUS berupa JSON murni agar bisa saya convert ke Excel. Jangan ada markdown ```json```.
+    4. 4. Format output HARUS berupa JSON murni agar bisa saya convert ke Excel. Jangan ada markdown ```json```.
+    
+    ---
+    PENTING: JANGAN ada teks pengantar seperti "Berikut hasil ekstraksinya:" atau "Tentu, ini JSON-nya.".
+    Berikan HANYA dan SELURUHNYA string JSON, dimulai dari karakter { dan diakhiri dengan karakter }.
+    ---
 
     Format JSON yang diinginkan:
     {{
